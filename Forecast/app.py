@@ -46,7 +46,7 @@ if uploaded_file:
 
     # Drop rows with invalid or missing dates or revenue
     df = df.dropna(subset=['ds', 'y'])
-    
+
     # Check for empty or insufficient data
     if df.shape[0] < 2:
         st.error("Not enough data points to perform forecasting. Ensure you have multiple data points.")
@@ -66,7 +66,7 @@ if uploaded_file:
 
     try:
         # Create future dataframe for predictions (365 days ahead)
-        future = model.make_future_dataframe(df, periods=365)
+        future = model.make_future_dataframe(df, periods=365)  # Ensure the correct parameter passing
         
         # Ensure future dates are of type datetime
         future['ds'] = pd.to_datetime(future['ds'])
