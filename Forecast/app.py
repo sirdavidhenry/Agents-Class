@@ -3,70 +3,103 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from fbprophet import Prophet
+from prophet import Prophet
 import os
 from dotenv import load_dotenv
+from groq import Groq
 
-# Load API key securely
+# Load environment variables securely
 load_dotenv()
+
+# Load the Groq API Key from environment
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
+# Check if the API key is missing
 if not GROQ_API_KEY:
     st.error("🚨 API Key is missing! Set it in Streamlit Secrets or a .env file.")
     st.stop()
 
-# **🎨 Streamlit UI Styling**
-st.set_page_config(page_title="AI Forecasting with Prophet", page_icon="📊", layout="wide")
-
-# **Upload Excel File**
-st.title("📈 AI-Driven Revenue Forecasting")
-st.subheader("Upload your Excel file with 'Date' and 'Revenue' columns")
-
-uploaded_file = st.file_uploader("Choose an Excel file", type=["xlsx"])
-
-if uploaded_file is not None:
-    # Load data from Excel file
-    data = pd.read_excel(uploaded_file)
-
-    # Ensure the dataset contains required columns
-    if 'Date' not in data.columns or 'Revenue' not in data.columns:
-        st.error("The dataset must contain 'Date' and 'Revenue' columns.")
+# Define a function to handle the file upload
+def load_data(file):
+    data = pd.read_excel(file)
+    if "Date" not in data.columns or "Revenue" not in data.columns:
+        st.error("The Excel file must contain 'Date' and 'Revenue' columns.")
         st.stop()
+    return data
 
-    # Convert Date column to datetime type
-    data['Date'] = pd.to_datetime(data['Date'], format='%Y-%m-%d')
+# Set up Streamlit UI
+st.set_page_config(page_title="Revenue Forecasting with Prophet", page_icon="📊", layout="wide")
 
-    # Rename columns for Prophet compatibility
-    data = data.rename(columns={'Date': 'ds', 'Revenue': 'y'})
+# Header and file upload prompt
+st.title("🚀 AI-Powered Revenue Forecasting")
+st.markdown("Upload your Excel file containing 'Date' and 'Revenue' columns to get a forecast.")
 
-    # **Fit Prophet Model**
+# File upload
+uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx"])
+if uploaded_file:
+    # Load the data
+    df = load_data(uploaded_file)
+    st.subheader("📊 Data Overview")
+    st.write(df.head())
+
+    # Prepare the data for Prophet
+    df['Date'] = pd.to_datetime(df['Date'])
+    df = df.rename(columns={'Date': 'ds', 'Revenue': 'y'})  # Prophet expects these columns
+
+    # Fit the Prophet model
     model = Prophet()
-    model.fit(data)
+    model.fit(df)
 
-    # Make future dataframe for predictions
-    future = model.make_future_dataframe(data, periods=365)  # Forecast for the next year
+    # Create future dataframe for predictions
+    future = model.make_future_dataframe(df, periods=365)  # Predict for the next year
     forecast = model.predict(future)
 
-    # **Plot the Forecast**
-    st.subheader("🔮 Forecasted Revenue")
+    # Display forecasted data
+    st.subheader("📅 Forecasting Results")
+    st.write(forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail())
+
+    # Plot forecast
+    st.subheader("📈 Forecast Plot")
     fig = model.plot(forecast)
     st.pyplot(fig)
 
-    # **Plot the Forecast Components**
-    st.subheader("📊 Forecast Components (Trend, Weekly, Yearly)")
+    # Plot components (trend, holidays, etc.)
+    st.subheader("🧩 Forecast Components")
     fig2 = model.plot_components(forecast)
     st.pyplot(fig2)
 
-    # **Display Forecast Data**
-    st.subheader("📊 Forecast Data")
-    forecast_df = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']]
-    st.write(forecast_df.tail())
+    # Prepare data for Groq API call
+    data_for_ai = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].to_dict(orient='records')
 
-    # **AI Forecast Summary (Optional - Use Groq or another service for this)**
-    # If you're integrating the Groq AI commentary as in the initial code, you can use that here as well
-    # Replace below with your actual AI processing logic
+    # Generate AI-based Commentary using Groq
+    st.subheader("🤖 AI-Generated Commentary")
+    client = Groq(api_key=GROQ_API_KEY)
+    prompt = f"""
+    You are a revenue forecasting expert. Here is the forecast data for the next year:
 
-    st.subheader("🤖 AI Commentary (Optional)")
-    # If you want to include AI-generated commentary, here you would insert code similar to the one in the original snippet.
-    # ai_commentary = generate_ai_commentary(forecast_df)  # Replace with your function
-    # st.write(ai_commentary)
+    - Date and predicted revenue
+    - Lower and upper bounds of the predictions
+
+    Provide a comprehensive analysis that includes:
+    - Key insights from the data.
+    - Areas of concern and key drivers for revenue growth/decline.
+    - Actionable recommendations based on the forecast.
+    
+    Here is the data for the forecast: {data_for_ai}
+    """
+    
+    response = client.chat.completions.create(
+        messages=[
+            {"role": "system", "content": "You are a revenue forecasting expert."},
+            {"role": "user", "content": prompt}
+        ],
+        model="llama3-8b-8192",  # Make sure to choose the correct model based on your account
+    )
+
+    ai_commentary = response.choices[0].message.content
+
+    # Display AI Commentary
+    st.markdown('<div class="analysis-container">', unsafe_allow_html=True)
+    st.subheader("📖 AI-Generated Commentary")
+    st.write(ai_commentary)
+    st.markdown('</div>', unsafe_allow_html=True)
