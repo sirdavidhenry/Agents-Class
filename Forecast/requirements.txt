@@ -2,7 +2,7 @@ streamlit
 pandas
 numpy
 matplotlib
-prophet
+pdfplumber
+openpyxl
 groq
 python-dotenv
-openpyxl
