@@ -2,10 +2,11 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from prophet import Prophet
 import os
 from groq import Groq
 from dotenv import load_dotenv
+import pdfplumber
+from openpyxl import Workbook
 
 # Load API key securely
 load_dotenv()
@@ -15,65 +16,68 @@ if not GROQ_API_KEY:
     st.stop()
 
 # Streamlit UI Setup
-st.set_page_config(page_title="AI Forecasting with Prophet", page_icon="📈", layout="wide")
-st.title("📈 AI-Driven Revenue Forecasting")
-st.subheader("Upload an Excel file with 'Date' and 'Revenue' columns")
+st.set_page_config(page_title="AI Invoice Coding", page_icon="📄", layout="wide")
+st.title("📄 AI-Driven Invoice Coding")
+st.subheader("Upload an invoice PDF and a Chart of Accounts (Excel/CSV)")
 
-# File Upload
-uploaded_file = st.file_uploader("Upload your Excel file", type=["xlsx", "xls"])
-if uploaded_file:
-    df = pd.read_excel(uploaded_file)
-    st.write("### Preview of Uploaded Data", df.head())
+# File Upload - Invoice PDF
+invoice_file = st.file_uploader("Upload Invoice PDF", type=["pdf"])
+coa_file = st.file_uploader("Upload Chart of Accounts (Excel/CSV)", type=["xlsx", "csv"])
 
-    # Data Preprocessing
-    df.columns = [col.lower() for col in df.columns]
-    if "date" not in df.columns or "revenue" not in df.columns:
-        st.error("Excel file must contain 'Date' and 'Revenue' columns.")
-        st.stop()
+if invoice_file and coa_file:
+    # Extract text from PDF
+    with pdfplumber.open(invoice_file) as pdf:
+        text = "\n".join([page.extract_text() for page in pdf.pages if page.extract_text()])
     
-    df = df.rename(columns={"date": "ds", "revenue": "y"})
-    df["ds"] = pd.to_datetime(df["ds"])
+    st.write("### Extracted Invoice Text")
+    st.text(text[:1000])  # Show a preview of extracted text
     
-    # Prophet Model Training
-    model = Prophet()
-    model.fit(df)
+    # Load Chart of Accounts
+    if coa_file.name.endswith(".csv"):
+        coa_df = pd.read_csv(coa_file)
+    else:
+        coa_df = pd.read_excel(coa_file)
     
-    # Future Prediction
-    future = model.make_future_dataframe(periods=30)  # Predict next 30 days
-    forecast = model.predict(future)
+    st.write("### Preview of Chart of Accounts", coa_df.head())
     
-    # Plot Forecast
-    st.write("### Forecasted Revenue")
-    fig, ax = plt.subplots(figsize=(10, 5))
-    model.plot(forecast, ax=ax)
-    st.pyplot(fig)
-    
-    # Generate AI Commentary
-    st.subheader("🤖 AI-Generated Forecast Analysis")
+    # AI-Based Invoice Coding
+    st.subheader("🤖 AI-Generated Invoice Coding")
     client = Groq(api_key=GROQ_API_KEY)
     
-    # Reduce data size to prevent API overload
-    forecast_summary = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(5).to_json()
-    
     prompt = f"""
-    You are a financial analyst. Analyze the revenue forecast and provide:
-    - Key trends observed.
-    - Potential risks and opportunities.
-    - Actionable insights for business growth.
-    Here is a summary of the forecast data:
-    {forecast_summary}
+    You are an expert accountant. Based on the extracted invoice text, map the relevant line items
+    to the appropriate GL codes from the Chart of Accounts. Return the results in a structured format
+    with columns: 'Description', 'Amount', 'GL Code', 'GL Description'.
+    
+    Invoice text:
+    {text[:2000]}
+    
+    Chart of Accounts:
+    {coa_df.to_json()}
     """
     
     try:
         response = client.chat.completions.create(
             messages=[
-                {"role": "system", "content": "You are an expert financial analyst."},
+                {"role": "system", "content": "You are an expert accountant specialized in invoice coding."},
                 {"role": "user", "content": prompt}
             ],
             model="llama3-8b-8192",
         )
-        ai_analysis = response.choices[0].message.content
+        ai_coding = response.choices[0].message.content
+        st.write(ai_coding)
     except Exception as e:
-        ai_analysis = f"🚨 AI Analysis Error: {str(e)}"
+        st.error(f"🚨 AI Processing Error: {str(e)}")
     
-    st.write(ai_analysis)
+    # Export to Excel
+    st.subheader("📤 Export Coded Invoice")
+    output_file = "coded_invoice.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["Description", "Amount", "GL Code", "GL Description"])
+    for line in ai_coding.split("\n")[1:]:  # Skip header row
+        ws.append(line.split(","))
+    wb.save(output_file)
+    
+    with open(output_file, "rb") as f:
+        st.download_button("Download Coded Invoice", f, file_name=output_file, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
