@@ -65,20 +65,17 @@ if uploaded_file:
     model = Prophet()
 
     try:
-        # Create future dataframe for predictions (365 days ahead)
-        future = model.make_future_dataframe(df, periods=365)  # Correct call without any extra arguments
-        
-        # Ensure future dates are of type datetime
-        future['ds'] = pd.to_datetime(future['ds'])
-        
-        # Generate the forecast
-        forecast = model.predict(future)
+        # Instead of generating future dataframe, just fit the model on existing data
+        model.fit(df)
 
-        # Display forecasted data
+        # Generate the forecast on the historical data (no future prediction)
+        forecast = model.predict(df)
+
+        # Display forecasted data (for the historical data)
         st.subheader("📅 Forecasting Results")
         st.write(forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail())
 
-        # Plot forecast
+        # Plot forecast (for historical data predictions)
         st.subheader("📈 Forecast Plot")
         fig = model.plot(forecast)
         st.pyplot(fig)
@@ -95,7 +92,7 @@ if uploaded_file:
         st.subheader("🤖 AI-Generated Commentary")
         client = Groq(api_key=GROQ_API_KEY)
         prompt = f"""
-        You are a revenue forecasting expert. Here is the forecast data for the next year:
+        You are a revenue forecasting expert. Here is the forecast data for the historical period:
 
         - Date and predicted revenue
         - Lower and upper bounds of the predictions
