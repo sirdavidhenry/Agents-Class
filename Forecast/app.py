@@ -51,22 +51,29 @@ if uploaded_file:
     # Generate AI Commentary
     st.subheader("🤖 AI-Generated Forecast Analysis")
     client = Groq(api_key=GROQ_API_KEY)
+    
+    # Reduce data size to prevent API overload
+    forecast_summary = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(5).to_json()
+    
     prompt = f"""
     You are a financial analyst. Analyze the revenue forecast and provide:
     - Key trends observed.
     - Potential risks and opportunities.
     - Actionable insights for business growth.
-    Here is the forecast data:
-    {forecast.to_json()}
+    Here is a summary of the forecast data:
+    {forecast_summary}
     """
     
-    response = client.chat.completions.create(
-        messages=[
-            {"role": "system", "content": "You are an expert financial analyst."},
-            {"role": "user", "content": prompt}
-        ],
-        model="llama3-8b-8192",
-    )
+    try:
+        response = client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": "You are an expert financial analyst."},
+                {"role": "user", "content": prompt}
+            ],
+            model="llama3-8b-8192",
+        )
+        ai_analysis = response.choices[0].message.content
+    except Exception as e:
+        ai_analysis = f"🚨 AI Analysis Error: {str(e)}"
     
-    ai_analysis = response.choices[0].message.content
     st.write(ai_analysis)
