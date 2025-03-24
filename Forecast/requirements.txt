@@ -1,8 +1,8 @@
 streamlit
 pandas
-prophet
+numpy
 matplotlib
-seaborn
-python-dotenv
-groq
+prophet
+openai
+python-dotenv7
 openpyxl
