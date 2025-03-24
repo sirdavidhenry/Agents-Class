@@ -1,8 +1,6 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
-import seaborn as sns
 from prophet import Prophet
 import os
 from dotenv import load_dotenv
@@ -48,6 +46,20 @@ if uploaded_file:
 
     # Drop rows with invalid or missing dates or revenue
     df = df.dropna(subset=['ds', 'y'])
+    
+    # Check for empty or insufficient data
+    if df.shape[0] < 2:
+        st.error("Not enough data points to perform forecasting. Ensure you have multiple data points.")
+        st.stop()
+
+    # Verify that the 'ds' column is in datetime format and 'y' column is numeric
+    if not pd.api.types.is_datetime64_any_dtype(df['ds']):
+        st.error("The 'Date' column should be in datetime format.")
+        st.stop()
+
+    if not pd.api.types.is_numeric_dtype(df['y']):
+        st.error("The 'Revenue' column should be numeric.")
+        st.stop()
 
     # Fit the Prophet model
     model = Prophet()
