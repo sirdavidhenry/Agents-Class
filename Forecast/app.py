@@ -42,64 +42,75 @@ if uploaded_file:
     st.subheader("📊 Data Overview")
     st.write(df.head())
 
-    # Prepare the data for Prophet
-    df['Date'] = pd.to_datetime(df['Date'])
+    # Ensure the 'Date' column is in datetime format and rename columns
+    df['Date'] = pd.to_datetime(df['Date'], errors='coerce')  # Coerce errors to NaT (Not a Time)
     df = df.rename(columns={'Date': 'ds', 'Revenue': 'y'})  # Prophet expects these columns
+
+    # Drop rows with invalid or missing dates or revenue
+    df = df.dropna(subset=['ds', 'y'])
 
     # Fit the Prophet model
     model = Prophet()
-    model.fit(df)
 
-    # Create future dataframe for predictions
-    future = model.make_future_dataframe(df, periods=365)  # Predict for the next year
-    forecast = model.predict(future)
+    try:
+        # Create future dataframe for predictions (365 days ahead)
+        future = model.make_future_dataframe(df, periods=365)
+        
+        # Ensure future dates are of type datetime
+        future['ds'] = pd.to_datetime(future['ds'])
+        
+        # Generate the forecast
+        forecast = model.predict(future)
 
-    # Display forecasted data
-    st.subheader("📅 Forecasting Results")
-    st.write(forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail())
+        # Display forecasted data
+        st.subheader("📅 Forecasting Results")
+        st.write(forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail())
 
-    # Plot forecast
-    st.subheader("📈 Forecast Plot")
-    fig = model.plot(forecast)
-    st.pyplot(fig)
+        # Plot forecast
+        st.subheader("📈 Forecast Plot")
+        fig = model.plot(forecast)
+        st.pyplot(fig)
 
-    # Plot components (trend, holidays, etc.)
-    st.subheader("🧩 Forecast Components")
-    fig2 = model.plot_components(forecast)
-    st.pyplot(fig2)
+        # Plot components (trend, holidays, etc.)
+        st.subheader("🧩 Forecast Components")
+        fig2 = model.plot_components(forecast)
+        st.pyplot(fig2)
 
-    # Prepare data for Groq API call
-    data_for_ai = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].to_dict(orient='records')
+        # Prepare data for Groq API call
+        data_for_ai = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].to_dict(orient='records')
 
-    # Generate AI-based Commentary using Groq
-    st.subheader("🤖 AI-Generated Commentary")
-    client = Groq(api_key=GROQ_API_KEY)
-    prompt = f"""
-    You are a revenue forecasting expert. Here is the forecast data for the next year:
+        # Generate AI-based Commentary using Groq
+        st.subheader("🤖 AI-Generated Commentary")
+        client = Groq(api_key=GROQ_API_KEY)
+        prompt = f"""
+        You are a revenue forecasting expert. Here is the forecast data for the next year:
 
-    - Date and predicted revenue
-    - Lower and upper bounds of the predictions
+        - Date and predicted revenue
+        - Lower and upper bounds of the predictions
 
-    Provide a comprehensive analysis that includes:
-    - Key insights from the data.
-    - Areas of concern and key drivers for revenue growth/decline.
-    - Actionable recommendations based on the forecast.
-    
-    Here is the data for the forecast: {data_for_ai}
-    """
-    
-    response = client.chat.completions.create(
-        messages=[
-            {"role": "system", "content": "You are a revenue forecasting expert."},
-            {"role": "user", "content": prompt}
-        ],
-        model="llama3-8b-8192",  # Make sure to choose the correct model based on your account
-    )
+        Provide a comprehensive analysis that includes:
+        - Key insights from the data.
+        - Areas of concern and key drivers for revenue growth/decline.
+        - Actionable recommendations based on the forecast.
 
-    ai_commentary = response.choices[0].message.content
+        Here is the data for the forecast: {data_for_ai}
+        """
 
-    # Display AI Commentary
-    st.markdown('<div class="analysis-container">', unsafe_allow_html=True)
-    st.subheader("📖 AI-Generated Commentary")
-    st.write(ai_commentary)
-    st.markdown('</div>', unsafe_allow_html=True)
+        response = client.chat.completions.create(
+            messages=[
+                {"role": "system", "content": "You are a revenue forecasting expert."},
+                {"role": "user", "content": prompt}
+            ],
+            model="llama3-8b-8192",  # Make sure to choose the correct model based on your account
+        )
+
+        ai_commentary = response.choices[0].message.content
+
+        # Display AI Commentary
+        st.markdown('<div class="analysis-container">', unsafe_allow_html=True)
+        st.subheader("📖 AI-Generated Commentary")
+        st.write(ai_commentary)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    except Exception as e:
+        st.error(f"An error occurred while generating the forecast: {e}")
